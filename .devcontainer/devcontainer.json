@@ -1,0 +1,34 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/python
+{
+	"name": "Butterfly Project",
+
+	// Use your Docker Compose file to define the services.
+	"dockerComposeFile": ["../docker-compose.yml"],
+
+	// The service VS Code should attach to. We'll attach to the backend.
+	"service": "backend",
+
+	// The folder inside the container where your code is.
+	"workspaceFolder": "/app/butterfly-backend",
+
+	// Configure tool-specific properties.
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ErikKralj.vscode-grok"
+			]
+		}
+	},
+
+	// Forward the ports for the frontend and backend.
+	"forwardPorts": [3000, 5001],
+
+	// When port 3000 is forwarded, open it in VS Code's Simple Browser.
+	"portsAttributes": {
+		"3000": {
+			"label": "Frontend",
+			"onAutoForward": "openPreview"
+		}
+	}
+}

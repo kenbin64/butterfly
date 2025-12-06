@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Butterfly Universal Connector</title>
+    <style>
+        body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #1a1a1a; color: #f0f2f5; }
+        .container { text-align: center; max-width: 600px; padding: 2em; border: 1px solid #343a40; border-radius: 8px; }
+        h1 { color: #0d6efd; font-size: 3rem; }
+        p { font-size: 1.1rem; line-height: 1.6; color: #adb5bd; }
+        code { background-color: #343a40; padding: 0.2em 0.4em; border-radius: 4px; color: #e9ecef; }
+        .philosophy { font-style: italic; color: #8a949e; margin-bottom: 2em; }
+        .subscribe-form { margin-top: 2em; }
+        .subscribe-form input[type="email"] { padding: 0.75em; width: 60%; border-radius: 4px; border: 1px solid #495057; background-color: #212529; color: #f0f2f5; }
+        .subscribe-form input[type="submit"] { padding: 0.75em 1.5em; border: none; border-radius: 4px; background-color: #0d6efd; color: white; cursor: pointer; margin-left: 0.5em; }
+        .subscribe-form input[type="submit"]:hover { background-color: #0b5ed7; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>The Butterfly</h1>
+        <p class="philosophy">
+            Like the flutter of a butterfly's wings, small things can create great possibilities.
+        </p>
+        <p>
+            Welcome. The Butterfly System is running as middleware, ready to connect your apps, data, and services.
+        </p>
+        <p>
+            To begin, build a client that sends encrypted requests to the <code>/invoke</code> endpoint. This system will secure and manage your connections, ensuring only authorized data is ever accessed.
+        </p>
+        <div class="subscribe-form">
+            <p>Sign up for updates and patches.</p>
+            <form action="/subscribe" method="POST">
+                <input type="email" name="email" placeholder="your.email@example.com" required>
+                <input type="submit" value="Subscribe">
+            </form>
+        </div>
+    </div>
+</body>
+</html>
