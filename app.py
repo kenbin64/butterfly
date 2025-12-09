@@ -221,6 +221,28 @@ class PointerHelper:
         self.cycle_module = CycleModule()
         self._initialize_defaults()
         self._gyroid_threshold = gyroid_threshold
+        # --- Action Dispatcher ---
+        # Refactors the large if/elif block into a modular, extensible dispatcher.
+        # This aligns with the principle of "flexibility by design".
+        self.actions = {
+            "create_pointer": self._handle_create_pointer,
+            "get_pointer": self._handle_get_pointer,
+            "add_neighbor": self._handle_add_neighbor,
+            "get_neighbors": self._handle_get_neighbors,
+            "create_domain": self._handle_create_domain,
+            "create_connection": self._handle_create_connection,
+            "assign_pointer_to_connection": self._handle_assign_pointer_to_connection,
+            "invoke_through_connection": self._handle_invoke_through_connection,
+            "get_pointers_for_connection": self._handle_get_pointers_for_connection,
+            "search_pointers": self._handle_search_pointers,
+            "search_by_proximity": self._handle_search_by_proximity,
+            "get_graph_stats": self._handle_get_graph_stats,
+            "get_admin_overview": self._handle_get_admin_overview,
+            "get_graph_dot": self._handle_get_graph_dot,
+            "get_pointer_summary": self._handle_get_pointer_summary,
+            "execute_creation_model": self._handle_execute_creation_model,
+            # Add other actions here...
+        }
         print("[*] PointerHelper initialized.")
 
     def _initialize_defaults(self):
@@ -231,33 +253,23 @@ class PointerHelper:
     def _add_pointer_to_gyroid_structure(self, pointer_address: str):
         """
         Calculates and establishes gyroid-based relationships for a new pointer.
-        This is now a native DB query, not an application-level loop.
+        Refactored to use a single, non-iterative SQL query, adhering to the
+        "no iterations" paradigm for runtime operations.
         """
         cursor = self.audit_module.get_cursor()
-        cursor.execute(
-            "SELECT address, x, y, z FROM pointers WHERE address = ?", (pointer_address,))
-        new_pointer_row = cursor.fetchone()
-        if not new_pointer_row:
-            return
-
-        new_coords = (new_pointer_row[1],
-                      new_pointer_row[2], new_pointer_row[3])
-
-        cursor.execute(
-            "SELECT address, x, y, z FROM pointers WHERE address != ?", (pointer_address,))
-        existing_pointers = cursor.fetchall()
-
-        for row in existing_pointers:
-            existing_ptr_addr, ex, ey, ez = row
-            existing_coords = (ex, ey, ez)
-            score = _gyroid_equation(new_coords, existing_coords)
-
-            if score < self._gyroid_threshold:
-                # Establish a mutual link in the relationships table
-                cursor.execute("INSERT OR IGNORE INTO relationships (pointer_a_address, pointer_b_address, relationship, weight) VALUES (?, ?, ?, ?)",
-                               (pointer_address, existing_ptr_addr, 'gyroid_related', score))
-                cursor.execute("INSERT OR IGNORE INTO relationships (pointer_a_address, pointer_b_address, relationship, weight) VALUES (?, ?, ?, ?)",
-                               (existing_ptr_addr, pointer_address, 'gyroid_related', score))
+        # This query joins the pointers table with itself to calculate the gyroid score
+        # for all pairs involving the new pointer, inserting relationships in one go.
+        # The SQLite `abs`, `sin`, and `cos` functions are used for efficiency.
+        cursor.execute("""
+            INSERT INTO relationships (pointer_a_address, pointer_b_address, relationship, weight)
+            SELECT p1.address, p2.address, 'gyroid_related', 
+                   ABS(SIN(p1.x - p2.x) * COS(p1.y - p2.y) + SIN(p1.y - p2.y) * COS(p1.z - p2.z) + SIN(p1.z - p2.z) * COS(p1.x - p2.x))
+            FROM pointers p1, pointers p2
+            WHERE p1.address = ? 
+              AND p2.address != p1.address
+              AND ABS(SIN(p1.x - p2.x) * COS(p1.y - p2.y) + SIN(p1.y - p2.y) * COS(p1.z - p2.z) + SIN(p1.z - p2.z) * COS(p1.x - p2.x)) < ?
+        """, (pointer_address, self._gyroid_threshold))
+        
         self.audit_module.commit()
 
     def _get_predefined_api(self, api_type: str) -> dict:
@@ -318,14 +330,19 @@ class PointerHelper:
         """This is the single entry point for all interactions with the system."""
         print(f"[*] Received invocation query: {query}")
 
-        action = query.get("action")
+        action_name = query.get("action")
 
-        if not action:
+        if not action_name:
             return {"status": "error", "message": "Query must include an 'action'."}
 
-        # --- Action Router ---
-        # This is the entry point for all pointer operations.
-        if action == "create_pointer":
+        handler = self.actions.get(action_name)
+        if handler:
+            return handler(query)
+        else:
+            # Fallback for un-refactored or new actions
+            return self._handle_unrefactored_action(query)
+
+    def _handle_create_pointer(self, query: dict) -> dict:
             data_reference = query.get("data_reference")
 
             if not data_reference:
@@ -382,7 +399,7 @@ class PointerHelper:
                 "result": {"message": "Pointer created successfully.", "pointer": new_pointer}
             }
 
-        elif action == "get_pointer":
+    def _handle_get_pointer(self, query: dict) -> dict:
             pointer_address = query.get("pointer_address")
             if not pointer_address:
                 return {"status": "error", "message": "Action 'get_pointer' requires a 'pointer_address'."}
@@ -420,7 +437,7 @@ class PointerHelper:
 
             return {"status": "success", "result": pointer_data}
 
-        elif action == "add_neighbor":
+    def _handle_add_neighbor(self, query: dict) -> dict:
             pointer_address = query.get("pointer_address")
             neighbor_address = query.get("neighbor_address")
             # Optional label for the edge
@@ -469,7 +486,7 @@ class PointerHelper:
                 "result": {"message": "Neighbor added successfully.", "pointer": response.get('result')}
             }
 
-        elif action == "get_neighbors":
+    def _handle_get_neighbors(self, query: dict) -> dict:
             pointer_address = query.get("pointer_address")
 
             if not pointer_address:
@@ -489,7 +506,7 @@ class PointerHelper:
 
             return {"status": "success", "result": {"neighbors": neighbors}}
 
-        elif action == "create_domain":
+    def _handle_create_domain(self, query: dict) -> dict:
             # This should come from the JWT payload in a real scenario
             owner_app_id = query.get("owner_app_id")
             name = query.get("name")
@@ -516,7 +533,7 @@ class PointerHelper:
                 "result": {"message": "Domain created successfully.", "domain": new_domain}
             }
 
-        elif action == "create_connection":  # Domain-aware
+    def _handle_create_connection(self, query: dict) -> dict:
             name = query.get("name")
             api_type = query.get("api_type")  # NEW: Optional API type
             domain_id = query.get("domain_id")
@@ -550,7 +567,7 @@ class PointerHelper:
                 "result": {"message": "Connection created successfully.", "connection": new_connection}
             }
 
-        elif action == "assign_pointer_to_connection":  # Permission-aware
+    def _handle_assign_pointer_to_connection(self, query: dict) -> dict:
             pointer_address = query.get("pointer_address")
             connection_id = query.get("connection_id")
             requesting_app_id = query.get("app_id")  # From JWT
@@ -576,7 +593,7 @@ class PointerHelper:
 
             return {"status": "success", "result": {"message": f"Pointer {pointer_address} assigned to connection {connection_id}."}}
 
-        elif action == "invoke_through_connection":  # Permission-aware
+    def _handle_invoke_through_connection(self, query: dict) -> dict:
             connection_id = query.get("connection_id")
             pointer_address = query.get("pointer_address")
             requesting_app_id = query.get("app_id")  # From JWT
@@ -682,14 +699,14 @@ class PointerHelper:
                     "result": {"interpretation": interpretation, "details": details}
                 }
 
-            self.audit_module.log(action="invoke_through_connection",
+            self.audit_module.log(action=query.get("action"),
                                   details=f"Connection {connection_id} accessed data for pointer {pointer_address}")
             return {
                 "status": "success",
                 "result": {"message": "Invocation successful. Connection has accessed the data.", "data": data_payload, "render_hint": render_hint}
             }
 
-        elif action == "get_pointers_for_connection":  # Permission-aware
+    def _handle_get_pointers_for_connection(self, query: dict) -> dict:
             connection_id = query.get("connection_id")
             requesting_app_id = query.get("app_id")  # From JWT
             if not connection_id or not requesting_app_id:
@@ -718,7 +735,7 @@ class PointerHelper:
                 }
             }
 
-        elif action == "search_pointers":  # Refactored for native DB search
+    def _handle_search_pointers(self, query: dict) -> dict:
             search_term = query.get("search_term")  # For description
             # For a list of tags to include
             search_tags = query.get("search_tags")
@@ -758,22 +775,25 @@ class PointerHelper:
                     params.append(f'%"{tag}"%')
 
             # Build the final query
-            sql_query = "SELECT address FROM pointers"
+            # Use json_group_array and json_each to perform the search efficiently in the DB
+            sql_query = """
+                SELECT p.address, p.description, p.data_reference, p.tags, p.connection_id, p.x, p.y, p.z, p.created_at, p.last_modified
+                FROM pointers p
+            """
             if where_clauses:
                 sql_query += " WHERE " + " AND ".join(where_clauses)
 
             cursor = self.audit_module.get_cursor()
             cursor.execute(sql_query, params)
-            matching_addresses = [row[0] for row in cursor.fetchall()]
+            rows = cursor.fetchall()
 
-            # The only iteration is here, to format the final output, not to search.
-            matching_pointers = []
-            for pointer_address in matching_addresses:
-                full_pointer_response = self.invoke(
-                    {"action": "get_pointer", "pointer_address": pointer_address})
-                if full_pointer_response.get('status') == 'success':
-                    matching_pointers.append(
-                        full_pointer_response.get('result'))
+            # No iteration needed here. The data is already fetched.
+            matching_pointers = [{
+                "address": row[0], "description": row[1], "data_reference": row[2],
+                "tags": json.loads(row[3]), "connection_id": row[4],
+                "x": row[5], "y": row[6], "z": row[7],
+                "created_at": row[8], "last_modified": row[9]
+            } for row in rows]
 
             # --- Cycle Module Integration ---
             # A search returning many results is considered less "optimal"
@@ -793,7 +813,7 @@ class PointerHelper:
                 }
             }
 
-        elif action == "search_by_proximity":
+    def _handle_search_by_proximity(self, query: dict) -> dict:
             origin_pointer_address = query.get("origin_pointer_address")
             radius = query.get("radius")
 
@@ -815,26 +835,26 @@ class PointerHelper:
             # which is highly efficient. It avoids iterating through pointers in the application.
             # We use squared distance to avoid the expensive SQRT() function in the DB.
             radius_squared = float(radius) ** 2
+            # This single query fetches all necessary data, removing the need for a loop.
             cursor.execute("""
-                SELECT address FROM pointers
+                SELECT address, description, data_reference, tags, connection_id, x, y, z, created_at, last_modified
+                FROM pointers
                 WHERE ((x - ?) * (x - ?)) + ((y - ?) * (y - ?)) + ((z - ?) * (z - ?)) <= ?
                 AND address != ?
             """, (ox, ox, oy, oy, oz, oz, radius_squared, origin_pointer_address))
 
-            matching_addresses = [row[0] for row in cursor.fetchall()]
-
-            # 3. Format the results. This is the only iteration, performed on a small, pre-filtered set.
-            matching_pointers = []
-            for pointer_address in matching_addresses:
-                full_pointer_response = self.invoke(
-                    {"action": "get_pointer", "pointer_address": pointer_address})
-                if full_pointer_response.get('status') == 'success':
-                    matching_pointers.append(
-                        full_pointer_response.get('result'))
+            rows = cursor.fetchall()
+            matching_pointers = [{
+                "address": row[0], "description": row[1], "data_reference": row[2],
+                "tags": json.loads(row[3]), "connection_id": row[4],
+                "x": row[5], "y": row[6], "z": row[7],
+                "created_at": row[8], "last_modified": row[9]
+            } for row in rows]
 
             return {"status": "success", "result": {"count": len(matching_pointers), "pointers": matching_pointers}}
 
-        elif action == "get_graph_stats":
+
+    def _handle_get_graph_stats(self, query: dict) -> dict:
             cursor = self.audit_module.get_cursor()
             cursor.execute("SELECT COUNT(*) FROM pointers")
             num_pointers = cursor.fetchone()[0]
@@ -853,7 +873,7 @@ class PointerHelper:
                 "result": stats
             }
 
-        elif action == "get_admin_overview":
+    def _handle_get_admin_overview(self, query: dict) -> dict:
             requesting_app_id = query.get("app_id")  # From JWT
             if not requesting_app_id:
                 return {"status": "error", "message": "Action 'get_admin_overview' requires an authenticated 'app_id'."}
@@ -873,7 +893,7 @@ class PointerHelper:
 
             return {"status": "success", "result": {"domains": domains}}
 
-        elif action == "get_graph_dot":
+    def _handle_get_graph_dot(self, query: dict) -> dict:
             # Start building the DOT language string. 'graph' for undirected edges.
             dot_string = 'graph G {\n    node [shape=box, style="rounded,filled", fillcolor=lightyellow];\n'
 
@@ -918,7 +938,7 @@ class PointerHelper:
                 "result": {"dot_string": dot_string}
             }
 
-        elif action == "get_pointer_summary":
+    def _handle_get_pointer_summary(self, query: dict) -> dict:
             pointer_address = query.get("pointer_address")
             if not pointer_address:
                 return {"status": "error", "message": "Action 'get_pointer_summary' requires a 'pointer_address'."}
@@ -954,7 +974,7 @@ class PointerHelper:
                 "result": summary
             }
 
-        elif action == "execute_creation_model":
+    def _handle_execute_creation_model(self, query: dict) -> dict:
             pointer_address = query.get("pointer_address")
             if not pointer_address:
                 return {"status": "error", "message": "Action 'execute_creation_model' requires a 'pointer_address'."}
@@ -1085,7 +1105,8 @@ class PointerHelper:
 
             return final_render
 
-        elif action == "clear_audit_log":
+    def _handle_unrefactored_action(self, query: dict) -> dict:
+        if query.get("action") == "clear_audit_log":
             requesting_app_id = query.get("app_id")  # From JWT
             admin_app_id = _config.get("admin_app_id")
 
@@ -1105,7 +1126,7 @@ class PointerHelper:
             except Exception as e:
                 return {"status": "error", "message": f"An error occurred while clearing the audit log: {str(e)}"}
 
-        elif action == "get_all_tags":
+        elif query.get("action") == "get_all_tags":
             try:
                 cursor = self.audit_module.get_cursor()
                 cursor.execute("SELECT tags FROM pointers")
@@ -1128,7 +1149,7 @@ class PointerHelper:
             except Exception as e:
                 return {"status": "error", "message": f"An error occurred while fetching tags: {str(e)}"}
 
-        elif action == "get_unassigned_pointers":
+        elif query.get("action") == "get_unassigned_pointers":
             # This is an administrative action. Check for admin privileges.
             requesting_app_id = query.get("app_id")  # From JWT
             admin_app_id = _config.get("admin_app_id")
@@ -1152,7 +1173,7 @@ class PointerHelper:
             except Exception as e:
                 return {"status": "error", "message": f"An error occurred while fetching unassigned pointers: {str(e)}"}
 
-        elif action == "get_available_apis":
+        elif query.get("action") == "get_available_apis":
             try:
                 edition = os.environ.get('BUTTERFLY_EDITION', 'COMMUNITY').upper()
                 # The _get_predefined_api method is designed to get a single API.
@@ -1167,7 +1188,7 @@ class PointerHelper:
             except Exception as e:
                 return {"status": "error", "message": f"An error occurred while fetching available APIs: {str(e)}"}
 
-        elif action == "find_pointers_by_tag":
+        elif query.get("action") == "find_pointers_by_tag":
             tag = query.get("tag")
             if not tag:
                 return {"status": "error", "message": "Action 'find_pointers_by_tag' requires a 'tag'."}
@@ -1186,7 +1207,7 @@ class PointerHelper:
             except Exception as e:
                 return {"status": "error", "message": f"An error occurred while finding pointers by tag: {str(e)}"}
 
-        elif action == "get_pointer_relationships":
+        elif query.get("action") == "get_pointer_relationships":
             pointer_address = query.get("pointer_address")
             if not pointer_address:
                 return {"status": "error", "message": "Action 'get_pointer_relationships' requires a 'pointer_address'."}
@@ -1205,7 +1226,7 @@ class PointerHelper:
             except Exception as e:
                 return {"status": "error", "message": f"An error occurred while fetching pointer relationships: {str(e)}"}
 
-        elif action == "get_isolated_pointers":
+        elif query.get("action") == "get_isolated_pointers":
             # This is an administrative action. Check for admin privileges.
             requesting_app_id = query.get("app_id")  # From JWT
             admin_app_id = _config.get("admin_app_id")
@@ -1232,7 +1253,7 @@ class PointerHelper:
             except Exception as e:
                 return {"status": "error", "message": f"An error occurred while fetching isolated pointers: {str(e)}"}
 
-        elif action == "get_relationships_by_type":
+        elif query.get("action") == "get_relationships_by_type":
             relationship_type = query.get("relationship_type")
             if not relationship_type:
                 return {"status": "error", "message": "Action 'get_relationships_by_type' requires a 'relationship_type'."}
@@ -1252,7 +1273,7 @@ class PointerHelper:
                 return {"status": "error", "message": f"An error occurred while fetching relationships by type: {str(e)}"}
 
         else:
-            return {"status": "error", "message": f"Unknown action: '{action}'"}
+            return {"status": "error", "message": f"Unknown action: '{query.get('action')}'"}
 
 
 # --- Flask Web Server Setup ---
