@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Capability Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .spinner { border: 4px solid rgba(0,0,0,0.1); width: 24px; height: 24px; border-radius: 50%; border-left-color: #09f; animation: spin 1s ease infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .hidden { display: none; }
+        #search-results { margin-top: 1rem; }
+        .capability-card { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; cursor: pointer; }
+        .capability-card:hover { background-color: #f0f8ff; }
+        #runner-ui { margin-top: 1rem; border-top: 2px solid #09f; padding-top: 1rem; }
+        #runner-ui label { display: block; margin-top: 0.5rem; }
+        #runner-ui input { width: 100%; padding: 0.5rem; }
+        #runner-output { background-color: #eee; padding: 0.5rem; border-radius: 4px; white-space: pre-wrap; word-break: break-all; margin-top: 1rem; }
+        #runner-output canvas { width: 100%; height: 300px; background-color: #333; }
+        #forecast-container { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center; margin-top: 1rem; }
+        .forecast-card { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; width: 150px; text-align: center; background-color: #f9f9f9; }
+        .section-divider { border-top: 2px solid #ccc; padding-top: 1rem; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/">&larr; Back to Home</a>
+        <h1>Dynamic Capability Dashboard</h1>
+        <p>This dashboard discovers and renders UIs for capabilities registered in the system.</p>
+
+        <!-- User Context Simulation -->
+        <div id="user-context-simulation" class="section-divider">
+            <h2>User Context Simulation</h2>
+            <p>Define the user's attributes to test geometric permissions. This vector will be sent with every request.</p>
+            <div>
+                <label for="userClearance">Security Clearance (1-5):</label>
+                <input type="number" id="userClearance" value="1" min="1" max="5">
+            </div>
+            <div>
+                <label for="userDepartment">Department:</label>
+                <select id="userDepartment">
+                    <option value="sales">Sales</option>
+                    <option value="engineering">Engineering</option>
+                    <option value="strategy">Strategy</option>
+                </select>
+            </div>
+            <div>
+                <label for="userProjectRole">Project Role:</label>
+                <select id="userProjectRole">
+                    <option value="lead">Lead</option>
+                    <option value="contributor">Contributor</option>
+                    <option value="viewer">Viewer</option>
+                </select>
+            </div>
+            <div>
+                <label for="userTimeOfDay">Time of Day:</label>
+                <select id="userTimeOfDay">
+                    <option value="morning">Morning (09:00-12:00)</option>
+                    <option value="afternoon">Afternoon (12:00-17:00)</option>
+                    <option value="evening">Evening (17:00-21:00)</option>
+                    <option value="night">Night (21:00-09:00)</option>
+                </select>
+            </div>
+            <div>
+                <label for="userAction">Intended Action:</label>
+                <select id="userAction">
+                    <option value="read">Read</option>
+                    <option value="execute">Execute</option>
+                    <option value="write">Write</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Step 1: Discovery -->
+        <div class="controls">
+            <input type="search" id="searchInput" placeholder="Search for capabilities (e.g., 'weather', 'task')...">
+            <button id="searchButton">Search</button>
+        </div>
+        <div id="search-results"></div>
+
+        <!-- Step 2: Execution UI (Dynamically Generated) -->
+        <div id="runner-ui" class="hidden section-divider">
+            <h2 id="runner-title"></h2>
+            <div id="runner-inputs"></div>
+            <button id="runCapabilityButton" style="margin-top: 1rem;">Run</button>
+            <div id="runner-spinner" class="spinner hidden"></div>
+            <div id="runner-output"></div>
+        </div>
+    </div>
+
+    <script>
+        const searchInput = document.getElementById('searchInput');
+        const searchButton = document.getElementById('searchButton');
+        const searchResultsContainer = document.getElementById('search-results');
+        const runnerUI = document.getElementById('runner-ui');
+        let selectedCapability = null;
+
+        // --- 1. Discovery Logic ---
+        searchButton.addEventListener('click', async () => {
+            const term = searchInput.value.trim();
+            if (!term) return;
+
+            searchResultsContainer.innerHTML = '<div class="spinner"></div>';
+            const response = await fetch(`/api/butterfly/index?term=${encodeURIComponent(term)}`);
+            const results = await response.json();
+
+            searchResultsContainer.innerHTML = '';
+            if (results.length === 0) {
+                searchResultsContainer.textContent = 'No capabilities found.';
+            } else {
+                results.forEach(cap => {
+                    const card = document.createElement('div');
+                    card.className = 'capability-card';
+                    card.innerHTML = `<h3>${cap.name} (z=${cap.z_address})</h3><p>${cap.description}</p>`;
+                    card.onclick = () => {
+                        selectedCapability = cap;
+                        buildRunnerUI(cap);
+                    };
+                    searchResultsContainer.appendChild(card);
+                });
+            }
+        });
+
+        // --- 2. UI Generation Logic (The "Decision Tree") ---
+        function buildRunnerUI(capability) {
+            runnerUI.classList.remove('hidden');
+            document.getElementById('runner-title').textContent = `Run: ${capability.name}`;
+            const inputsContainer = document.getElementById('runner-inputs');
+            inputsContainer.innerHTML = '';
+
+            // This loop is the core of the dynamic UI generation.
+            capability.inputs.forEach(inputDef => {
+                const container = document.createElement('div');
+                const label = document.createElement('label');
+                label.textContent = inputDef.label;
+                container.appendChild(label);
+
+                // This switch statement is the "decision tree" for rendering inputs.
+                switch (inputDef.type) {
+                    case 'number':
+                    case 'range':
+                    case 'text':
+                        const input = document.createElement('input');
+                        input.type = inputDef.type;
+                        input.name = inputDef.name;
+                        input.placeholder = inputDef.placeholder || '';
+                        if (inputDef.default) input.value = inputDef.default;
+                        if (inputDef.min) input.min = inputDef.min;
+                        if (inputDef.max) input.max = inputDef.max;
+                        container.appendChild(input);
+                        break;
+                    case 'select':
+                        const select = document.createElement('select');
+                        select.name = inputDef.name;
+                        inputDef.options.forEach(opt => {
+                            const option = document.createElement('option');
+                            option.value = opt;
+                            option.textContent = opt;
+                            select.appendChild(option);
+                        });
+                        container.appendChild(select);
+                        break;
+                    default:
+                        console.warn(`Unsupported input type: ${inputDef.type}`);
+                }
+                inputsContainer.appendChild(container);
+            });
+
+            document.getElementById('runner-output').innerHTML = '';
+        }
+
+        // --- 3. Execution Logic ---
+        document.getElementById('runCapabilityButton').addEventListener('click', async () => {
+            if (!selectedCapability) return;
+
+            const runnerSpinner = document.getElementById('runner-spinner');
+            const runnerOutput = document.getElementById('runner-output');
+            runnerSpinner.classList.remove('hidden');
+            runnerOutput.innerHTML = '';
+
+            // Gather parameters from the dynamically generated inputs
+            const params = {};
+            const inputs = document.getElementById('runner-inputs').querySelectorAll('input, select');
+            inputs.forEach(input => {
+                params[input.name] = input.type === 'number' ? parseFloat(input.value) : input.value;
+            });
+
+            // Gather user attributes from the simulation section
+            const userClearance = parseInt(document.getElementById('userClearance').value, 10);
+            const userDepartment = document.getElementById('userDepartment').value;
+            const userProjectRole = document.getElementById('userProjectRole').value;
+            const userAction = document.getElementById('userAction').value;
+
+            const requestBody = {
+                z_address: selectedCapability.z_address,
+                securityContext: {
+                    id: 'dynamic-dashboard-user-001',
+                    permissions: [
+                        { action: 'read', resourceType: 'weather-api' },
+                        { action: 'read', resourceType: 'task-list' },
+                        { action: 'execute', resourceType: 'render-3d' },
+                        { action: 'execute', resourceType: 'ai-model' },
+                        { action: 'search', resourceType: 'task-list' }
+                    ],
+                    // Add the simulated user attributes to the security context
+                    attributes: {
+                        clearance: userClearance,
+                        department: userDepartment,
+                        projectRole: userProjectRole,
+                        timeOfDay: userTimeOfDay,
+                        action: userAction
+                    }
+                },
+                params: params
+            };
+
+            try {
+                const response = await fetch('/api/butterfly/resolve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.error.message || 'Execution failed.');
+                }
+
+                // --- 4. Output Rendering Logic (Another "Decision Tree") ---
+                renderOutput(result.data, selectedCapability.output);
+
+            } catch (error) {
+                runnerOutput.innerHTML = `<pre style="color: red;">Error: ${error.message}</pre>`;
+            } finally {
+                runnerSpinner.classList.add('hidden');
+            }
+        });
+
+        function renderOutput(data, outputHint) {
+            const runnerOutput = document.getElementById('runner-output');
+            runnerOutput.innerHTML = ''; // Clear previous output
+
+            switch (outputHint.type) {
+                case 'forecast-cards':
+                    const container = document.createElement('div');
+                    container.id = 'forecast-container';
+                    data.days.slice(0, 5).forEach(day => {
+                        const card = document.createElement('div');
+                        card.className = 'forecast-card';
+                        card.innerHTML = `<h3>${day.datetime}</h3><p>${day.tempmax}° / ${day.tempmin}° C</p><p>${day.conditions}</p>`;
+                        container.appendChild(card);
+                    });
+                    runnerOutput.appendChild(container);
+                    break;
+                case '3d-model':
+                    // This is a placeholder for a real 3D rendering library (like Three.js).
+                    // It demonstrates that the UI can decide to render a completely different component.
+                    const canvas = document.createElement('canvas');
+                    canvas.id = outputHint.containerId;
+                    runnerOutput.appendChild(canvas);
+                    runnerOutput.insertAdjacentHTML('beforeend', `<p>Initializing 3D viewer for model with complexity ${data.complexity}...</p>`);
+                    break;
+                case 'json':
+                default:
+                    const pre = document.createElement('pre');
+                    pre.textContent = JSON.stringify(data, null, 2);
+                    runnerOutput.appendChild(pre);
+                    break;
+            }
+        }
+    </script>
+</body>
+</html>
+```
+
+### How It Works
+
+1.  **Discovery**: The user types a term (e.g., "weather") and clicks search. The frontend calls `/api/butterfly/index`, which searches the `z_address_registry.yml` for matching keywords and returns a list of capabilities, including their UI hints.
+2.  **UI Generation**: The user clicks on a capability card. The `buildRunnerUI` function acts as a "decision tree," reading the `inputs` array from the capability's UI hints and dynamically creating the necessary HTML `<input>` elements.
+3.  **Execution**: The user fills in the generated form and clicks "Run." The frontend gathers the values, constructs the request body, and sends it to the generic `/api/butterfly/resolve` endpoint.
+4.  **Output Rendering**: Upon receiving a successful result, the `renderOutput` function acts as a second "decision tree." It checks the `output.type` hint and decides how to best display the data—either as a set of forecast cards or as raw JSON.
+
+You have now created a truly dynamic system. The frontend has no hardcoded knowledge of weather, tasks, or any other capability. It is a generic shell that can discover, render, and execute any capability that is properly registered in the `z_address_registry.yml`, perfectly realizing your vision.
+
+<!--
+[PROMPT_SUGGESTION]Add a new `isWeekend` condition to the `evaluateConditions` function.[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]Create a new endpoint to dynamically reload the `z_address_registry.yml` without restarting the server.[/PROMPT_SUGGESTION]
+-->

@@ -1,18 +1,46 @@
 version: '3.8'
 
 services:
-  app:
+  butterfly-app:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.butterfly-app
     ports:
       - "5001:5001"
-    env_file:
-      - .env
+    environment:
+      # IMPORTANT: Replace with strong, unique keys in production.
+      # You can generate a Fernet key using:
+      # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - JWT_SECRET_KEY=your_super_secret_jwt_key_here_replace_me
+      - BUTTERFLY_ENCRYPTION_KEY=gAAAAABmX-y_example_fernet_key_replace_me_with_real_one
     volumes:
-      # Mounts a named volume to persist the SQLite DB and config.json
-      - butterfly_data:/app
+      # Persist the database and config outside the container
+      - ./butterfly_local.db:/app/butterfly_local.db
+      - butterfly_config:/app/config
 
-# Defines the named volume for data persistence
+  bff-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.bff-service
+    ports:
+      - "5002:5002"
+    environment:
+      # Use the service name for inter-container communication
+      - BUTTERFLY_SERVER_URL=http://butterfly-app:5001
+      # IMPORTANT: These must match the butterfly-app's keys
+      - JWT_SECRET_KEY=your_super_secret_jwt_key_here_replace_me
+      - BUTTERFLY_ENCRYPTION_KEY=gAAAAABmX-y_example_fernet_key_replace_me_with_real_one
+    depends_on:
+      - butterfly-app # BFF depends on the main app being up
+
+  frontend-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend-server
+    ports:
+      - "5003:5003"
+    depends_on:
+      - bff-service # Frontend depends on the BFF being up
+
 volumes:
-  butterfly_data:
+  butterfly_config:

@@ -1,0 +1,176 @@
+# This file is the central registry for all z-addresses (capabilities) in the system.
+# It is loaded at startup and used by the QubeResolver to look up resource definitions.
+
+# UI hints are added to provide metadata for dynamic frontends.
+# - name: The human-readable name of the capability.
+# - description: A short explanation of what it does.
+# - keywords: Search terms for the QubeIndex.
+# - inputs: An array defining the required input fields.
+# - output: A hint for how to render the result.
+
+# To-Do App Capabilities (200-299)
+201:
+  description: "The capability to read a user's list of tasks."
+  connectionDetails: { protocol: 'sql', address: 'todo_database.db' }
+  requiredPermission:
+    operator: 'AND'
+    clauses: [{ action: 'read', resourceType: 'task-list' }, 'isOwner']
+  ui:
+    name: "Get All Tasks"
+    description: "Fetches a complete list of to-do tasks for a user."
+    keywords: ['todo', 'task', 'get', 'read', 'list', 'all']
+    inputs:
+      - { name: 'userId', label: 'User ID', type: 'text', placeholder: 'e.g., user-123' }
+    output: { type: 'json' }
+  neighbors: [202, 203, 204]
+
+202:
+  description: "The capability to write a new task for a user."
+  connectionDetails: { protocol: 'sql', address: 'todo_database.db' }
+  requiredPermission:
+    operator: 'AND'
+    clauses: [{ action: 'write', resourceType: 'task' }, 'isOwner']
+  neighbors: [201, 203, 204]
+
+203:
+  description: "The capability to delete a single task, provided the user is the owner."
+  connectionDetails: { protocol: 'sql', address: 'todo_database.db' }
+  requiredPermission:
+    operator: 'AND'
+    clauses: [{ action: 'delete', resourceType: 'task' }, 'isOwner']
+  neighbors: [201, 202, 204]
+
+204:
+  description: "The capability to search a user's tasks by keyword."
+  connectionDetails: { protocol: 'sql', address: 'todo_database.db' }
+  requiredPermission:
+    operator: 'AND'
+    clauses: [{ action: 'search', resourceType: 'task-list' }, 'isOwner']
+  ui:
+    name: "Search Tasks"
+    description: "Searches for tasks containing a specific keyword."
+    keywords: ['todo', 'task', 'find', 'search', 'query', 'filter']
+    inputs:
+      - { name: 'userId', label: 'User ID', type: 'text', placeholder: 'e.g., user-123' }
+      - { name: 'searchTerm', label: 'Search Term', type: 'text', placeholder: 'e.g., milk' }
+    output: { type: 'json' }
+  neighbors: [201, 202, 203]
+
+# Financial Data API Capabilities (300-399)
+301:
+  description: "Fetches a real-time stock quote from Alpha Vantage."
+  connectionDetails: { protocol: 'https', address: 'www.alphavantage.co/query' }
+  requiredPermission:
+    # This capability uses the geometric model.
+    dimensions:
+      - { name: 'clearance', type: 'numeric' }
+      - { name: 'department', type: 'map', map: 'department' }
+      - { name: 'action', type: 'map', map: 'action' }
+    position: [2, 3, 1] # Mid-level clearance, sales dept, read action
+    threshold: 0.95
+  ui:
+    name: "Get Stock Quote"
+    description: "Fetches a real-time stock quote for a given ticker symbol."
+    keywords: ['stock', 'quote', 'price', 'financial', 'ticker']
+    inputs:
+      - { name: 'symbol', label: 'Ticker Symbol', type: 'text', placeholder: 'e.g., IBM' }
+    output: { type: 'json' }
+
+# Weather API Capabilities (500-599)
+501:
+  description: "The capability to fetch weather data."
+  connectionDetails: { protocol: 'https', address: 'weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/' }
+  requiredPermission:
+    operator: 'AND'
+    clauses: [{ action: 'read', resourceType: 'weather-api' }, 'isBusinessHours']
+  ui:
+    name: "Get Weather Forecast"
+    description: "Fetches the 5-day weather forecast for a given city."
+    keywords: ['weather', 'forecast', 'climate', 'temperature', 'api']
+    inputs:
+      - { name: 'location', label: 'City Name', type: 'text', placeholder: 'e.g., London, UK', required: true }
+      - { name: 'days', label: 'Forecast Days', type: 'number', default: 5, min: 1, max: 15 }
+      - { name: 'interval', label: 'Time Interval', type: 'select', options: ['24-hour', '12-hour', '6-hour'] }
+    output: { type: 'forecast-cards' }
+  neighbors: [201, 204]
+
+# 3D Rendering Capabilities (600-699)
+601:
+  description: "Renders a 3D model of a specified object."
+  connectionDetails: { protocol: 'webrtc', address: '3d-render-service' }
+  requiredPermission:
+    operator: 'AND'
+    clauses:
+      - { action: 'execute', resourceType: 'render-3d' }
+      - 'isWeekend' # This capability is now restricted to weekends.
+  ui:
+    name: "Render 3D Model"
+    description: "Generates and displays a 3D model, such as a gyroid."
+    keywords: ['3d', 'render', 'model', 'gyroid', 'visualization']
+    inputs:
+      - { name: 'complexity', label: 'Model Complexity', type: 'range', min: 10, max: 100, default: 50 }
+    output: { type: '3d-model', containerId: '3d-viewport' }
+
+# AI & Analytics Capabilities (700-799)
+701:
+  description: "Access to the predictive market analysis AI."
+  connectionDetails: { protocol: 'grpc', address: 'ai-engine-service' }
+  requiredPermission:
+    # This capability uses the geometric model. The dimensions are defined below.
+    dimensions:
+      - { name: 'clearance', type: 'numeric' }
+      - { name: 'department', type: 'map', map: 'department' }
+      - { name: 'action', type: 'map', map: 'action' }
+      - { name: 'projectRole', type: 'map', map: 'projectRole' }
+      - { name: 'timeOfDay', type: 'map', map: 'timeOfDay' }
+    position: [4, 1, 2, 1, 2] # clearance, department, action, projectRole, timeOfDay (afternoon)
+    threshold: 0.98 # Cosine similarity threshold (angle must be very small)
+  ui:
+    name: "Run Market Analysis AI"
+    description: "Executes the predictive market analysis AI model."
+    keywords: ['ai', 'market', 'analysis', 'predictive', 'strategy']
+    inputs:
+      - { name: 'market_sector', label: 'Market Sector', type: 'text', placeholder: 'e.g., technology' }
+    output: { type: 'json' }
+
+702:
+  description: "Access to the 5-year strategic planning document."
+  connectionDetails: { protocol: 'sfs', address: 'doc-store/strategic-plan-2025.pdf' }
+  requiredPermission:
+    # This capability also uses the geometric model with the same dimensions.
+    dimensions:
+      - { name: 'clearance', type: 'numeric' }
+      - { name: 'department', type: 'map', map: 'department' }
+      - { name: 'action', type: 'map', map: 'action' }
+      - { name: 'projectRole', type: 'map', map: 'projectRole' }
+      - { name: 'timeOfDay', type: 'map', map: 'timeOfDay' }
+    position: [5, 1, 1, 1, 1] # clearance, department, action, projectRole, timeOfDay (morning)
+    threshold: 0.99 # Must be a very close match.
+  ui:
+    name: "View Strategic Plan"
+    description: "Provides read-only access to the 5-year strategic planning document."
+    keywords: ['strategy', 'planning', 'document', 'confidential', 'secure']
+    inputs: [] # No user parameters needed for this capability.
+    output: { type: 'json' } # Assume it returns a secure link or status.
+
+# System & Logging Capabilities (800-899)
+801:
+  description: "Logs user feedback to the system."
+  connectionDetails: { protocol: 'log-service', address: 'feedback.log' }
+  requiredPermission:
+    # This capability uses the geometric model.
+    dimensions:
+      - { name: 'clearance', type: 'numeric' }
+      - { name: 'department', type: 'map', map: 'department' }
+      - { name: 'action', type: 'map', map: 'action' }
+      - { name: 'projectRole', type: 'map', map: 'projectRole' }
+      - { name: 'timeOfDay', type: 'map', map: 'timeOfDay' }
+    position: [1, 3, 3, 2, 2] # Low clearance, any dept, write action, contributor role, timeOfDay (afternoon)
+    threshold: 0.95
+  ui:
+    name: "Submit Feedback"
+    description: "Logs user feedback to the system for review."
+    keywords: ['feedback', 'log', 'comment', 'write', 'submit']
+    inputs:
+      - { name: 'feedbackText', label: 'Feedback Message', type: 'text', placeholder: 'Enter your feedback...' }
+    output: { type: 'json' }

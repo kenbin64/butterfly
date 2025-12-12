@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .spinner { border: 4px solid rgba(0,0,0,0.1); width: 24px; height: 24px; border-radius: 50%; border-left-color: #09f; animation: spin 1s ease infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .hidden { display: none; }
+        #output { background-color: #eee; padding: 0.5rem; border-radius: 4px; white-space: pre-wrap; word-break: break-all; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/">&larr; Back to Home</a>
+        <h1>Admin Dashboard</h1>
+        <p>Tools for system administration.</p>
+
+        <div class="controls" style="border-top: 2px solid #ccc; padding-top: 1rem; margin-top: 1rem;">
+            <h2>Z-Address Registry Control</h2>
+            <p>Trigger a hot reload of the <code>z_address_registry.yml</code> file from disk. This requires administrative privileges.</p>
+            <button id="reloadButton">Reload Registry</button>
+            <div id="spinner" class="spinner hidden"></div>
+        </div>
+
+        <div>
+            <h3>Output</h3>
+            <pre id="output">Awaiting command...</pre>
+        </div>
+    </div>
+
+    <script>
+        const reloadButton = document.getElementById('reloadButton');
+        const spinner = document.getElementById('spinner');
+        const output = document.getElementById('output');
+
+        reloadButton.addEventListener('click', async () => {
+            output.textContent = 'Sending reload command...';
+            output.style.color = 'inherit';
+            spinner.classList.remove('hidden');
+            reloadButton.disabled = true;
+
+            // For this demonstration, we are creating a security context for a user
+            // who has the required administrative permission. In a real application,
+            // this context would be derived from the logged-in user's session token.
+            const adminSecurityContext = {
+                id: 'admin-user-001',
+                // The user's attributes must match the vector required by the admin endpoint.
+                attributes: {
+                    action: 'admin',
+                    clearance: 5
+                },
+                permissions: [] // Geometric model doesn't use the old permissions array.
+            };
+
+            try {
+                const response = await fetch('/api/butterfly/admin/reload-registry', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ securityContext: adminSecurityContext })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    // Use the error message from the server's JSON response if available.
+                    throw new Error(result.error?.message || `Request failed with status ${response.status}`);
+                }
+
+                output.textContent = JSON.stringify(result, null, 2);
+
+            } catch (error) {
+                output.textContent = `Error: ${error.message}`;
+                output.style.color = 'red';
+            } finally {
+                spinner.classList.add('hidden');
+                reloadButton.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

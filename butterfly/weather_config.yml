@@ -1,0 +1,4 @@
+# weather_config.yml
+# This file contains the configuration for the weather API test.
+weather_api:
+  key: '5U82YNE4NC2X46EBG77AAVXNE'

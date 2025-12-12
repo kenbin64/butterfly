@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #09f;
+            animation: spin 1s ease infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden { display: none; }
+
+        #forecast-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 1rem;
+        }
+
+        .forecast-card {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 1rem;
+            width: 150px;
+            text-align: center;
+            background-color: #f9f9f9;
+        }
+
+        .forecast-card h3 {
+            margin: 0 0 0.5rem 0;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/">&larr; Back to Home</a>
+        <h1>Weather Forecast</h1>
+        <p>Enter a city name to get the next 5-day forecast.</p>
+        <div class="controls">
+            <input type="text" id="locationInput" placeholder="e.g., London, UK">
+            <input type="number" id="daysInput" value="5" min="1" max="15" title="Forecast Days">
+            <button id="getForecastButton">Get Forecast</button>
+            <button id="stressTestButton" style="background-color: #ffc107;">Run Stress Test (20 Cities)</button>
+        </div>
+        <h2>Results</h2>
+        <div id="spinner" class="spinner hidden"></div>
+        <div id="output">Enter a location to begin.</div>
+        <div id="forecast-container"></div>
+    </div>
+
+    <script>
+        // --- Application Logic ---
+        const getForecastButton = document.getElementById('getForecastButton');
+        const locationInput = document.getElementById('locationInput');
+        const daysInput = document.getElementById('daysInput');
+        const stressTestButton = document.getElementById('stressTestButton');
+        const spinner = document.getElementById('spinner');
+        const output = document.getElementById('output');
+        const forecastContainer = document.getElementById('forecast-container');
+
+        getForecastButton.addEventListener('click', async () => {
+            const location = locationInput.value.trim();
+            const days = parseInt(daysInput.value, 10);
+            if (!location) {
+                output.textContent = 'Please enter a location.';
+                return;
+            }
+
+            spinner.classList.remove('hidden');
+            output.textContent = 'Requesting weather capability from server...';
+            forecastContainer.innerHTML = '';
+            getForecastButton.disabled = true;
+            locationInput.disabled = true;
+            daysInput.disabled = true;
+            stressTestButton.disabled = true;
+
+            // This request body now calls the secure backend resolver.
+            const requestBody = {
+                z_address: 501,
+                securityContext: {
+                    id: 'weather-dashboard-user-001',
+                    // The backend's geometric model uses attributes, not the old permissions array.
+                    attributes: { action: 'read' }
+                },
+                params: { location: location, days: days }
+            };
+
+            try {
+                const response = await fetch('/api/butterfly/resolve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.error?.details || result.error?.message || 'Request failed');
+                }
+
+                if (result.success) {
+                    output.textContent = `Forecast for: ${result.data.resolvedAddress}`;
+                    // The backend now controls how many days are returned.
+                    result.data.days.forEach(day => {
+                        const card = document.createElement('div');
+                        card.className = 'forecast-card';
+                        card.innerHTML = `
+                            <h3>${day.datetime}</h3>
+                            <p>${day.tempmax}° / ${day.tempmin}°C</p>
+                            <p>${day.conditions}</p>
+                        `;
+                        forecastContainer.appendChild(card);
+                    });
+                } else {
+                    output.textContent = `Error: ${result.error.message} - ${result.error.details}`;
+                }
+            } catch (err) {
+                output.textContent = `A client-side error occurred: ${err.message}`;
+            } finally {
+                spinner.classList.add('hidden');
+                getForecastButton.disabled = false;
+                locationInput.disabled = false;
+                daysInput.disabled = false;
+                stressTestButton.disabled = false;
+            }
+        });
+
+        stressTestButton.addEventListener('click', async () => {
+            const cities = [
+                "Tokyo, JP", "New York, US", "London, UK", "Paris, FR", "Sydney, AU",
+                "Beijing, CN", "Moscow, RU", "Cairo, EG", "Rio de Janeiro, BR", "Mumbai, IN",
+                "Toronto, CA", "Mexico City, MX", "Lagos, NG", "Istanbul, TR", "Seoul, KR",
+                "Buenos Aires, AR", "Jakarta, ID", "Bangkok, TH", "Berlin, DE", "Rome, IT"
+            ];
+
+            spinner.classList.remove('hidden');
+            output.textContent = 'Starting stress test for 20 cities...\n\n';
+            forecastContainer.innerHTML = '';
+            getForecastButton.disabled = true;
+            stressTestButton.disabled = true;
+            locationInput.disabled = true;
+            daysInput.disabled = true;
+
+            let successCount = 0;
+            let failCount = 0;
+
+            try {
+                for (const city of cities) {
+                    output.textContent += `Fetching forecast for ${city}... `;
+
+                    const requestBody = {
+                        z_address: 501,
+                        securityContext: {
+                            id: 'weather-stress-test-user-001',
+                            attributes: { action: 'read' }
+                        },
+                        params: { location: city, days: 5 }
+                    };
+
+                    const response = await fetch('/api/butterfly/resolve', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody)
+                    });
+                    const result = await response.json();
+
+                    if (result.success) {
+                        successCount++;
+                        output.textContent += `SUCCESS (Temp: ${result.data.days[0].temp}°C)\n`;
+                    } else {
+                        failCount++;
+                        output.textContent += `FAILED (${result.error.message})\n`;
+                    }
+                    // A small delay to avoid hitting API rate limits too aggressively.
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+
+            } catch (err) {
+                output.textContent += `\n\nA fatal client-side error occurred: ${err.message}`;
+            } finally {
+                output.textContent += `\n--- Stress Test Complete ---\nSuccess: ${successCount}, Failures: ${failCount}`;
+                spinner.classList.add('hidden');
+                getForecastButton.disabled = false;
+                stressTestButton.disabled = false;
+                locationInput.disabled = false;
+                daysInput.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
+
+```
+
+### How to Use This File
+
+1.  Save the code above as `weather_dashboard.html` in your `c:\Projects\repo\condiut\butterfly\butterfly\` directory.
+2.  Open the file directly in your web browser.
+3.  Enter a city name (e.g., "Paris, France" or "Tokyo") and click "Get Forecast".
+
+The page will then execute the full Butterfly Paradigm workflow right in your browser: it will authorize the request, resolve the capability for `z-address 501`, and use the resulting Qube to fetch and display the 5-day forecast from the live weather API.
+
+<!--
+[PROMPT_SUGGESTION]Create a tutorial for a `QubeIndex` that allows dynamic discovery of z-addresses.[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]Update the `ToDoApp.js` file to handle the new structured responses from the Qube.[/PROMPT_SUGGESTION]
+->
+Generated by Gemini 2.5 Pro
+Prompts to try

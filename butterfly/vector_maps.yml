@@ -1,0 +1,20 @@
+# This file defines the mappings from string attributes to numeric vector components.
+# It is used by the geometric permission engine to construct context vectors.
+department:
+  strategy: 1
+  engineering: 2
+  sales: 3
+action:
+  read: 1
+  execute: 2
+  write: 3
+  admin: 4
+projectRole:
+  lead: 1
+  contributor: 2
+  viewer: 3
+timeOfDay:
+  morning: 1
+  afternoon: 2
+  evening: 3
+  night: 4

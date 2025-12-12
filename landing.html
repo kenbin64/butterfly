@@ -3,39 +3,136 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Butterfly Universal Connector</title>
+    <title>Butterfly System - RPG Character Builder</title>
     <style>
-        body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #1a1a1a; color: #f0f2f5; }
-        .container { text-align: center; max-width: 600px; padding: 2em; border: 1px solid #343a40; border-radius: 8px; }
-        h1 { color: #0d6efd; font-size: 3rem; }
-        p { font-size: 1.1rem; line-height: 1.6; color: #adb5bd; }
-        code { background-color: #343a40; padding: 0.2em 0.4em; border-radius: 4px; color: #e9ecef; }
-        .philosophy { font-style: italic; color: #8a949e; margin-bottom: 2em; }
-        .subscribe-form { margin-top: 2em; }
-        .subscribe-form input[type="email"] { padding: 0.75em; width: 60%; border-radius: 4px; border: 1px solid #495057; background-color: #212529; color: #f0f2f5; }
-        .subscribe-form input[type="submit"] { padding: 0.75em 1.5em; border: none; border-radius: 4px; background-color: #0d6efd; color: white; cursor: pointer; margin-left: 0.5em; }
-        .subscribe-form input[type="submit"]:hover { background-color: #0b5ed7; }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            color: #0056b3;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        textarea, pre {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #e9e9e9;
+            box-sizing: border-box;
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .message {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border-color: #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border-color: #f5c6cb;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>The Butterfly</h1>
-        <p class="philosophy">
-            Like the flutter of a butterfly's wings, small things can create great possibilities.
-        </p>
-        <p>
-            Welcome. The Butterfly System is running as middleware, ready to connect your apps, data, and services.
-        </p>
-        <p>
-            To begin, build a client that sends encrypted requests to the <code>/invoke</code> endpoint. This system will secure and manage your connections, ensuring only authorized data is ever accessed.
-        </p>
-        <div class="subscribe-form">
-            <p>Sign up for updates and patches.</p>
-            <form action="/subscribe" method="POST">
-                <input type="email" name="email" placeholder="your.email@example.com" required>
-                <input type="submit" value="Subscribe">
-            </form>
-        </div>
+        <h1>Butterfly RPG Character Builder</h1>
+        <p>This page demonstrates interacting with the Butterfly System via a Backend-for-Frontend (BFF).</p>
+        <p>The BFF handles secure communication (JWT, encryption) with the main Butterfly server.</p>
+
+        <h2>Create a Sample Character</h2>
+        <button id="createCharBtn">Create "Grok the Barbarian"</button>
+        <button id="listCharsBtn">List All Characters</button>
+        <div id="message" class="message"></div>
+        
+        <h2>Response:</h2>
+        <pre id="responseOutput"></pre>
     </div>
+
+    <script>
+        const bffBaseUrl = "http://localhost:5002"; // Your BFF server URL
+
+        async function makeBffRequest(endpoint, method = 'GET', body = null) {
+            const options = {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: body ? JSON.stringify(body) : null,
+            };
+            const response = await fetch(`${bffBaseUrl}${endpoint}`, options);
+            return response.json();
+        }
+
+        document.getElementById('createCharBtn').addEventListener('click', async () => {
+            const characterData = {
+                name: "Grok the Barbarian",
+                type: "player",
+                race: "Human",
+                alignment: "Chaotic Good",
+                strength: 18,
+                hit_points: 35,
+                charm: 7,
+                magic_ability: "None",
+                health: 100,
+                stamina: 80,
+                constitution: 16,
+                money: 15.50,
+                charisma: 8
+            };
+            const result = await makeBffRequest('/api/characters', 'POST', characterData);
+            document.getElementById('responseOutput').textContent = JSON.stringify(result, null, 2);
+            if (result.status === 'success' || result.character_id) { // BFF returns character_id on success
+                document.getElementById('message').className = 'message success';
+                document.getElementById('message').textContent = 'Character created successfully!';
+            } else {
+                document.getElementById('message').className = 'message error';
+                document.getElementById('message').textContent = result.error || 'Failed to create character.';
+            }
+        });
+
+        document.getElementById('listCharsBtn').addEventListener('click', async () => {
+            const result = await makeBffRequest('/api/characters', 'GET');
+            document.getElementById('responseOutput').textContent = JSON.stringify(result, null, 2);
+            if (Array.isArray(result)) { // BFF returns an array of characters on success
+                document.getElementById('message').className = 'message success';
+                document.getElementById('message').textContent = `Listed ${result.length} characters.`;
+            } else {
+                document.getElementById('message').className = 'message error';
+                document.getElementById('message').textContent = result.error || 'Failed to list characters.';
+            }
+        });
+    </script>
 </body>
 </html>

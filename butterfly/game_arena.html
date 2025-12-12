@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Arena</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #09f;
+            animation: spin 1s ease infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/">&larr; Back to Home</a>
+        <h1>Game Arena</h1>
+        <p>Run the AI-powered RPG simulation for a specified number of turns.</p>
+        <div class="controls">
+            <input type="number" id="turnsInput" value="5" min="1" max="50">
+            <button id="runButton">Run Simulation</button>
+        </div>
+        <h2>Results</h2>
+        <div id="spinner" class="spinner hidden"></div>
+        <pre id="output">Awaiting simulation start...</pre>
+    </div>
+
+    <script>
+        // --- Butterfly Paradigm Implementation (Client-Side) ---
+        // This section provides a simplified, client-side implementation of the
+        // core components, similar to the To-Do app examples.
+
+        /**
+         * Mock Persistent Log for z-addresses. In a real system, this might
+         * be fetched from a configuration service.
+         */
+        const persistentLog = {
+            401: {
+                description: "The capability to run the AI-powered RPG simulation.",
+                // The connection details are conceptual for a client-side simulation.
+                connectionDetails: { protocol: 'simulation-engine', address: 'local-game-engine' },
+                requiredPermission: { action: 'execute', resourceType: 'game-simulation' }
+            }
+        };
+
+        /**
+         * A mock game simulation engine. The ResolvedQube will interact with this.
+         */
+        const mockGameEngine = {
+            run: (turns) => {
+                return new Promise(resolve => {
+                    console.log(`[GAME ENGINE] Simulating ${turns} turns...`);
+                    // Simulate network delay and processing time.
+                    setTimeout(() => {
+                        let output = `Simulation Report (Turns: ${turns})\n`;
+                        output += "----------------------------------\n";
+                        for (let i = 1; i <= turns; i++) {
+                            output += `Turn ${i}: Player attacks Goblin, dealing ${Math.floor(Math.random() * 10) + 5} damage.\n`;
+                        }
+                        output += "----------------------------------\n";
+                        output += "Simulation Complete.";
+                        console.log(`[GAME ENGINE] Simulation finished.`);
+                        resolve({ success: true, output });
+                    }, 2000); // 2-second delay to simulate work
+                });
+            }
+        };
+
+        /**
+         * A simple permission checker.
+         */
+        function checkPermission(requirement, claims) {
+            return claims.some(claim =>
+                claim.action === requirement.action &&
+                claim.resourceType === requirement.resourceType
+            );
+        }
+
+        /**
+         * The active capability object. Its methods are determined by the
+         * permissions granted during its creation.
+         */
+        class ResolvedQube {
+            constructor(resourceDefinition, grantedAction) {
+                this._grantedAction = grantedAction;
+                // Dynamically attach the 'execute' method if the action was granted.
+                if (this._grantedAction === 'execute') {
+                    this.execute = this._execute.bind(this);
+                }
+            }
+
+            /**
+             * Executes the game simulation. This method only exists if 'execute' was granted.
+             * @param {object} params - e.g., { turns: 5 }
+             * @returns {Promise<object>} The result from the game engine.
+             */
+            async _execute(params) {
+                console.log(`[QUBE] Invoking 'execute' capability with ${params.turns} turns.`);
+                // The Qube knows how to interact with the underlying system (the mockGameEngine).
+                return mockGameEngine.run(params.turns);
+            }
+        }
+
+        /**
+         * The central component that resolves a request into a ResolvedQube.
+         */
+        class QubeResolver {
+            constructor(storage) {
+                this._storage = storage;
+            }
+
+            async resolve(z_address, securityContext) {
+                console.log(`[RESOLVER] Attempting to resolve z-address ${z_address} for user ${securityContext.id}`);
+                const resourceDefinition = this._storage[z_address];
+                if (!resourceDefinition) {
+                    console.error(`[RESOLVER] Error: z-address ${z_address} not found.`);
+                    return null;
+                }
+
+                const hasPermission = checkPermission(resourceDefinition.requiredPermission, securityContext.permissions);
+                if (!hasPermission) {
+                    console.log(`[RESOLVER] Access Denied: User does not have the required permission.`);
+                    return null;
+                }
+
+                console.log(`[RESOLVER] Access Granted. Instantiating Qube with 'execute' capability.`);
+                return new ResolvedQube(resourceDefinition, resourceDefinition.requiredPermission.action);
+            }
+        }
+
+        // --- Application Logic ---
+        const runButton = document.getElementById('runButton');
+        const turnsInput = document.getElementById('turnsInput');
+        const spinner = document.getElementById('spinner');
+        const output = document.getElementById('output');
+
+        runButton.addEventListener('click', async () => {
+            const turns = turnsInput.value;
+            
+            spinner.classList.remove('hidden');
+            output.textContent = 'Initializing secure request...';
+            runButton.disabled = true;
+            turnsInput.disabled = true;
+
+            try {
+                // 1. Initialize the resolver and define the security context for the request.
+                const qubeResolver = new QubeResolver(persistentLog);
+                const securityContext = {
+                    id: 'game-arena-user-001',
+                    // This user has the permission required by z-address 401.
+                    permissions: [{ action: 'execute', resourceType: 'game-simulation' }]
+                };
+
+                // 2. Resolve the z-address to get an active capability Qube.
+                const resolvedQube = await qubeResolver.resolve(401, securityContext);
+
+                if (!resolvedQube) {
+                    output.textContent = 'Authorization Failed: You do not have permission to run the simulation.';
+                    return; // Halt execution
+                }
+
+                // 3. Invoke the 'execute' capability on the resolved Qube.
+                // The application code does not know how the simulation runs, only that it can execute it.
+                output.textContent = 'Authorization successful. Running simulation...';
+                const result = await resolvedQube.execute({ turns });
+                output.textContent = result.success ? result.output : `Error: ${result.error}`;
+
+            } catch (err) {
+                output.textContent = `A client-side error occurred: ${err.message}`;
+            } finally {
+                spinner.classList.add('hidden');
+                runButton.disabled = false;
+                turnsInput.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
